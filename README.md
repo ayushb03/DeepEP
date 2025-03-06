@@ -277,6 +277,124 @@ For two micro-batch overlapping, you can refer to the following figure. With our
 
 ![low-latency](figures/low-latency.png)
 
+## Auto-tuning and Benchmarking
+
+DeepEP includes powerful auto-tuning capabilities that automatically optimize performance parameters for your specific hardware setup. This eliminates the need for manual parameter tuning and ensures optimal performance across different hardware configurations.
+
+### Auto-tuning
+
+The auto-tuning system can:
+
+- Automatically determine the optimal number of SMs for dispatch and combine operations
+- Create hardware-specific configuration profiles that can be saved and reused
+- Optimize buffer sizes based on workload characteristics
+
+Example usage:
+
+```python
+import torch
+import torch.distributed as dist
+from deep_ep import AutoTuner, Buffer
+
+# Initialize distributed environment
+# ...
+
+# Create auto-tuner with your process group
+auto_tuner = AutoTuner(group)
+
+# Method 1: Auto-tune and create optimized buffer in one step
+optimized_buffer = auto_tuner.create_optimized_buffer(
+    hidden_size=7168,
+    num_tokens=4096,
+    num_experts=32,
+    dtype=torch.bfloat16
+)
+
+# Method 2: Explicitly tune SM count first
+optimal_sm_count = auto_tuner.tune_sm_count(
+    hidden_size=7168,
+    num_tokens=4096,
+    num_experts=32,
+    dtype=torch.bfloat16
+)
+
+# Set the tuned SM count
+Buffer.set_num_sms(optimal_sm_count)
+
+# Save the tuned profile for future use
+config = auto_tuner.tune_and_save_profile(
+    profile_name="my_hardware_profile",
+    hidden_size=7168,
+    num_tokens=4096,
+    num_experts=32,
+    dtype=torch.bfloat16
+)
+
+# Load a previously saved profile
+success = auto_tuner.load_profile("my_hardware_profile")
+```
+
+See the full example in `examples/autotuning_example.py`.
+
+### Benchmarking
+
+DeepEP also includes benchmarking tools to help you:
+
+- Compare performance across different configuration parameters
+- Measure bandwidth and latency for dispatch and combine operations
+- Test both normal and low-latency modes
+
+Example usage:
+
+```python
+import torch
+import torch.distributed as dist
+from deep_ep import Benchmark
+
+# Initialize distributed environment
+# ...
+
+# Create benchmark instance
+benchmark = Benchmark(group)
+
+# Benchmark dispatch and combine with automatic SM tuning
+result = benchmark.benchmark_dispatch_combine(
+    hidden_size=7168,
+    num_tokens=4096,
+    num_experts=32
+)
+
+# Compare performance with different SM counts
+benchmark.compare_sm_counts(
+    hidden_size=7168,
+    num_tokens=4096,
+    num_experts=32,
+    sm_counts=[8, 16, 24, 32, 40, 48]
+)
+
+# Benchmark low latency mode
+result = benchmark.benchmark_low_latency(
+    hidden_size=7168,
+    num_tokens=128,  # Smaller batch size for decoding
+    num_experts=32
+)
+```
+
+You can also use the command-line benchmarking tool:
+
+```bash
+# Benchmark normal mode with auto-tuned SM count
+python -m deep_ep.benchmark --mode normal --hidden_size 7168 --num_tokens 4096 --num_experts 32
+
+# Benchmark low latency mode
+python -m deep_ep.benchmark --mode low_latency --hidden_size 7168 --num_tokens 128 --num_experts 32
+
+# Compare different SM counts
+python -m deep_ep.benchmark --mode compare_sm --hidden_size 7168 --num_tokens 4096 --num_experts 32 --sm_counts 8,16,24,32,40,48
+```
+
+See the full example in `examples/benchmark_example.py`.
+
 ## Roadmap
 
 - [x] AR support
