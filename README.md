@@ -395,6 +395,78 @@ python -m deep_ep.benchmark --mode compare_sm --hidden_size 7168 --num_tokens 40
 
 See the full example in `examples/benchmark_example.py`.
 
+## Dynamic Load Balancing
+
+DeepEP includes a dynamic load balancing system that optimizes expert utilization in Mixture-of-Experts (MoE) models. This feature addresses a common challenge in MoE models where some experts become overloaded while others remain underutilized.
+
+### Key Features:
+
+- **Real-time Expert Utilization Monitoring**: Track how tokens are distributed across experts
+- **Automatic Load Detection**: Identify imbalances in expert usage
+- **Dynamic Routing Adjustments**: Adapt capacity weights to balance workloads
+- **Visualization Tools**: Generate insights through utilization and balancing plots
+
+### Example Usage:
+
+```python
+import torch
+import torch.distributed as dist
+from deep_ep import DynamicRouter, Buffer
+
+# Initialize distributed environment
+# ...
+
+# Create a dynamic router
+dynamic_router = DynamicRouter(
+    num_experts=8,
+    group=group,
+    balance_threshold=0.2,  # Trigger balancing when normalized std deviation exceeds 0.2
+    window_size=50,         # Consider last 50 batches for moving averages
+    enable_auto_balancing=True  # Enable automatic load balancing
+)
+
+# During model forward pass
+def forward(x):
+    # Generate routing logits (e.g., from a routing network)
+    router_logits = router_network(x)
+    
+    # Apply dynamic routing with load balancing
+    route_indices, route_weights = dynamic_router.route(
+        router_logits=router_logits,
+        top_k=2,  # Select top 2 experts per token
+        use_capacity=True  # Apply capacity weights for balancing
+    )
+    
+    # Continue with normal MoE forward pass using DeepEP
+    # ...
+
+# Visualize expert utilization
+dynamic_router.plot_utilization(save_path="expert_utilization.png")
+dynamic_router.plot_balancing_events(save_path="load_balancing_events.png")
+
+# Get current capacity weights
+capacities = dynamic_router.get_expert_capacity()
+
+# Get current utilization statistics 
+utilization = dynamic_router.get_expert_utilization()
+
+# Save/load statistics for later analysis
+dynamic_router.save_stats("load_balancing_stats.json")
+dynamic_router.load_stats("load_balancing_stats.json")
+```
+
+### How It Works:
+
+1. **Monitoring Phase**: The system tracks how many tokens are assigned to each expert over time.
+
+2. **Imbalance Detection**: When the normalized standard deviation of expert utilization exceeds the threshold, load balancing is triggered.
+
+3. **Capacity Adjustment**: Expert capacity weights are updated inversely to their recent utilization (highly utilized experts get lower capacity, underutilized experts get higher capacity).
+
+4. **Capacity Application**: During routing, expert scores are multiplied by capacity weights, shifting token allocation toward underutilized experts.
+
+See the full example in `examples/load_balancing_example.py`.
+
 ## Roadmap
 
 - [x] AR support
