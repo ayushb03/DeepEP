@@ -467,6 +467,85 @@ dynamic_router.load_stats("load_balancing_stats.json")
 
 See the full example in `examples/load_balancing_example.py`.
 
+## Enhanced FP8 Support and Precision Control
+
+DeepEP now includes advanced precision control capabilities, allowing fine-grained management of numerical precision at different stages of MoE computation. This feature enables optimizing the performance-accuracy tradeoff for specific hardware and model requirements.
+
+### Key Features:
+
+- **Stage-specific Precision**: Set different precision modes for router, dispatch, expert computation, and combine stages
+- **FP8 Quantization Support**: Utilize FP8 precision for communication to reduce bandwidth requirements
+- **Multiple FP8 Formats**: Choose between E4M3 (better accuracy) and E5M2 (larger dynamic range) formats
+- **Per-token Quantization**: Maintain precision with token-wise scaling factors
+- **Hybrid Precision Dispatch**: Seamlessly integrate FP8 operations with higher precision computations
+
+### Example Usage:
+
+```python
+import torch
+from deep_ep import PrecisionManager, PrecisionMode, FP8Format, HybridPrecisionDispatch
+
+# Create a precision manager
+precision_manager = PrecisionManager(
+    default_mode=PrecisionMode.MIXED,
+    default_dtype=torch.bfloat16,
+    default_fp8_format=FP8Format.E4M3
+)
+
+# Configure specific stages
+precision_manager.configure_stage("dispatch", fp8_format=FP8Format.E4M3)
+precision_manager.configure_stage("expert_compute", dtype=torch.float32)
+precision_manager.configure_stage("combine", fp8_format=FP8Format.E4M3)
+
+# During model construction, create a hybrid precision dispatcher
+hybrid_dispatch = HybridPrecisionDispatch(
+    precision_manager=precision_manager,
+    buffer_provider=get_buffer_function
+)
+
+# In the forward pass, use the hybrid dispatch
+dispatch_result = hybrid_dispatch.dispatch(
+    x=hidden_states,
+    topk_idx=expert_indices,
+    topk_weights=expert_weights,
+    num_experts=num_experts
+)
+
+# Process with experts...
+
+# Use hybrid precision combine
+output = hybrid_dispatch.combine(
+    x=expert_outputs,
+    handle=dispatch_result[4],
+    topk_weights=dispatch_result[2]
+)
+
+# Temporarily change precision mode for a section of code
+with precision_manager.with_mode(PrecisionMode.FULL):
+    # This code runs in full precision (FP32)
+    high_precision_result = compute_sensitive_operation(inputs)
+```
+
+### Available Precision Modes:
+
+- **FULL**: Use full precision (FP32) for maximum accuracy
+- **MIXED**: Use mixed precision (BF16/FP16) for balanced performance
+- **LOW**: Use low precision (FP8) for maximum throughput
+- **DYNAMIC**: Automatically adjust precision based on numerical stability requirements
+- **HYBRID**: Use different precision modes for different computation stages
+
+### Common Usage Scenarios:
+
+1. **High-throughput Training**: Use FP8 for communication operations (dispatch and combine) to reduce bandwidth requirements while keeping computation in BF16.
+
+2. **High-precision Fine-tuning**: Use higher precision for expert computation while maintaining efficient communication with FP8 dispatch and combine.
+
+3. **Memory-constrained Inference**: Use FP8 throughout the model to reduce memory footprint.
+
+4. **Performance Profiling**: Compare different precision configurations to find the optimal setup for your specific hardware and model.
+
+See the full example in `examples/precision_control_example.py`.
+
 ## Roadmap
 
 - [x] AR support
